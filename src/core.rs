@@ -1,5 +1,22 @@
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Instrument(pub String);
+
+impl Instrument {
+    #[allow(dead_code)]
+    pub fn new(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Price(pub Decimal);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Quantity(pub i64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
@@ -15,40 +32,40 @@ pub enum OrderType {
 
 #[derive(Debug, Clone)]
 pub struct MarketData {
-    pub bid: f64,
-    pub ask: f64,
+    pub bid: Price,
+    pub ask: Price,
 }
 
 #[derive(Debug, Clone)]
 pub struct Position {
-    pub instrument: String,
-    pub last_qty: f64,
-    pub last_px: f64,
+    pub instrument: Instrument,
+    pub last_qty: Quantity, // Positions can be negative for short
+    pub last_px: Price,
 }
 
 #[derive(Debug, Clone)]
 pub struct Order {
     pub id: Uuid,
     pub side: Side,
-    pub qty: f64,
-    pub instrument: String,
+    pub qty: Quantity,
+    pub instrument: Instrument,
     pub order_type: OrderType,
-    pub px: f64,
+    pub px: Price,
     pub oco_with: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Trade {
-    pub instrument: String,
-    pub last_qty: f64,
-    pub last_px: f64,
+    pub instrument: Instrument,
+    pub last_qty: Quantity,
+    pub last_px: Price,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct State {
     pub trades: Vec<Trade>,
-    pub positions: HashMap<String, Position>,
-    pub market: HashMap<String, MarketData>,
+    pub positions: HashMap<Instrument, Position>,
+    pub market: HashMap<Instrument, MarketData>,
     pub open_orders: Vec<Order>,
 }
 
@@ -64,17 +81,17 @@ impl State {
 // ----------------------------------------------------------------
 
 #[allow(dead_code)]
-pub fn get_market(state: &State, cross: &str) -> MarketData {
+pub fn get_market(state: &State, cross: &Instrument) -> MarketData {
     state
         .market
         .get(cross)
         .cloned()
-        .expect(&format!("Market not found for cross: {}", cross))
+        .expect(&format!("Market not found for instrument: {:?}", cross))
 }
 
 #[allow(dead_code)]
-pub fn set_market(mut state: State, cross: &str, bid: f64, ask: f64) -> State {
-    state.market.insert(cross.to_string(), MarketData { bid, ask });
+pub fn set_market(mut state: State, cross: Instrument, bid: Price, ask: Price) -> State {
+    state.market.insert(cross, MarketData { bid, ask });
     state
 }
 
@@ -89,21 +106,25 @@ pub fn clear_positions(mut state: State) -> State {
 }
 
 #[allow(dead_code)]
-pub fn get_positions(state: &State) -> HashMap<String, Position> {
+pub fn get_positions(state: &State) -> HashMap<Instrument, Position> {
     state.positions.clone()
 }
 
 #[allow(dead_code)]
-pub fn get_position(state: &State, instrument: &str) -> Option<Position> {
+pub fn get_position(state: &State, instrument: &Instrument) -> Option<Position> {
     state.positions.get(instrument).cloned()
 }
 
 #[allow(dead_code)]
-pub fn set_position(mut state: State, instrument: &str, qty: f64, price: f64) -> State {
-    state.positions.insert(
-        instrument.to_string(),
-        make_position(instrument, qty, price),
-    );
+pub fn set_position(
+    mut state: State,
+    instrument: Instrument,
+    qty: Quantity,
+    price: Price,
+) -> State {
+    state
+        .positions
+        .insert(instrument.clone(), make_position(instrument, qty, price));
     state
 }
 
@@ -158,30 +179,41 @@ pub fn get_trades(state: &State) -> Vec<Trade> {
     state.trades.clone()
 }
 
-pub fn register_trade(mut state: State, instrument: &str, qty: f64, price: f64) -> State {
+pub fn register_trade(
+    mut state: State,
+    instrument: Instrument,
+    qty: Quantity,
+    price: Price,
+) -> State {
     state.trades.push(make_trade(instrument, qty, price));
     state
 }
 
-fn trade(mut state: State, cross: &str, qty: f64, price: f64) -> State {
-    state.trades.push(make_trade(cross, qty, price));
+fn trade(mut state: State, cross: Instrument, qty: Quantity, price: Price) -> State {
+    state.trades.push(make_trade(cross.clone(), qty, price));
     state
         .positions
-        .insert(cross.to_string(), make_position(cross, qty, price));
+        .insert(cross.clone(), make_position(cross, qty, price));
     state
 }
 
-pub fn buy(state: State, cross: &str, qty: f64) -> State {
-    let market_data = get_market(&state, cross);
+pub fn buy(state: State, cross: Instrument, qty: Quantity) -> State {
+    let market_data = get_market(&state, &cross);
     let price = market_data.ask;
     trade(state, cross, qty, price)
 }
 
-pub fn buy_with_orders(state: State, cross: &str, qty: f64, target: f64, stop: f64) -> State {
-    let take_profit = create_order(Side::Sell, qty, cross, OrderType::Limit, target);
-    let stop_loss = create_order(Side::Sell, qty, cross, OrderType::Stop, stop);
+pub fn buy_with_orders(
+    state: State,
+    cross: Instrument,
+    qty: Quantity,
+    target: Price,
+    stop: Price,
+) -> State {
+    let take_profit = create_order(Side::Sell, qty, cross.clone(), OrderType::Limit, target);
+    let stop_loss = create_order(Side::Sell, qty, cross.clone(), OrderType::Stop, stop);
 
-    let market_data = get_market(&state, cross);
+    let market_data = get_market(&state, &cross);
     let price = market_data.ask;
 
     let state = trade(state, cross, qty, price);
@@ -190,19 +222,21 @@ pub fn buy_with_orders(state: State, cross: &str, qty: f64, target: f64, stop: f
     submit_orders(state, oco_orders)
 }
 
-pub fn sell(state: State, cross: &str, qty: f64) -> State {
-    let market_data = get_market(&state, cross);
+pub fn sell(state: State, cross: Instrument, qty: Quantity) -> State {
+    let market_data = get_market(&state, &cross);
     let price = market_data.bid;
-    trade(state, cross, -qty, price)
+    // TODO: implement unary minus on Quantity
+    let Quantity(q) = qty;
+    trade(state, cross, Quantity(-q), price)
 }
 
 // ----------------------------------------------------------------
 // Helper functions
 // ----------------------------------------------------------------
 
-pub fn make_position(instrument: &str, qty: f64, price: f64) -> Position {
+pub fn make_position(instrument: Instrument, qty: Quantity, price: Price) -> Position {
     Position {
-        instrument: instrument.to_string(),
+        instrument,
         last_qty: qty,
         last_px: price,
     }
@@ -210,16 +244,16 @@ pub fn make_position(instrument: &str, qty: f64, price: f64) -> Position {
 
 pub fn create_order(
     side: Side,
-    qty: f64,
-    instrument: &str,
+    qty: Quantity,
+    instrument: Instrument,
     order_type: OrderType,
-    price: f64,
+    price: Price,
 ) -> Order {
     Order {
         id: Uuid::new_v4(),
         side,
         qty,
-        instrument: instrument.to_string(),
+        instrument,
         order_type,
         px: price,
         oco_with: Vec::new(),
@@ -237,9 +271,9 @@ pub fn make_oco(orders: Vec<Order>) -> Vec<Order> {
         .collect()
 }
 
-pub fn make_trade(instrument: &str, qty: f64, price: f64) -> Trade {
+pub fn make_trade(instrument: Instrument, qty: Quantity, price: Price) -> Trade {
     Trade {
-        instrument: instrument.to_string(),
+        instrument,
         last_qty: qty,
         last_px: price,
     }
@@ -248,43 +282,68 @@ pub fn make_trade(instrument: &str, qty: f64, price: f64) -> Trade {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_decimal_macros::dec;
 
     #[test]
     fn test_market() {
         let state = State::new();
-        let state = set_market(state, "EURUSD", 1.1000, 1.1005);
-        let m = get_market(&state, "EURUSD");
-        assert_eq!(m.bid, 1.1000);
-        assert_eq!(m.ask, 1.1005);
+        let instrument = Instrument::new("EURUSD");
+        let state = set_market(
+            state,
+            instrument.clone(),
+            Price(dec!(1.1000)),
+            Price(dec!(1.1005)),
+        );
+        let m = get_market(&state, &instrument);
+        assert_eq!(m.bid, Price(dec!(1.1000)));
+        assert_eq!(m.ask, Price(dec!(1.1005)));
     }
 
     #[test]
     fn test_buy() {
         let state = State::new();
-        let state = set_market(state, "EURUSD", 1.1000, 1.1005);
+        let instrument = Instrument::new("EURUSD");
+        let state = set_market(
+            state,
+            instrument.clone(),
+            Price(dec!(1.1000)),
+            Price(dec!(1.1005)),
+        );
         let state = clear_trades(state);
         let state = clear_positions(state);
-        let state = buy(state, "EURUSD", 1000.0);
-        let pos_opt = get_position(&state, "EURUSD");
+        let state = buy(state, instrument.clone(), Quantity(1000));
+        let pos_opt = get_position(&state, &instrument);
         let pos = pos_opt.unwrap();
-        assert_eq!(pos.last_qty, 1000.0);
-        assert_eq!(pos.last_px, 1.1005);
+        assert_eq!(pos.last_qty, Quantity(1000));
+        assert_eq!(pos.last_px, Price(dec!(1.1005)));
 
         let trades = get_trades(&state);
         assert_eq!(trades.len(), 1);
-        assert_eq!(trades[0].instrument, "EURUSD");
+        assert_eq!(trades[0].instrument, instrument);
     }
 
     #[test]
     fn test_buy_with_orders() {
         let state = State::new();
-        let state = set_market(state, "EURUSD", 1.1000, 1.1005);
+        let instrument = Instrument::new("EURUSD");
+        let state = set_market(
+            state,
+            instrument.clone(),
+            Price(dec!(1.1000)),
+            Price(dec!(1.1005)),
+        );
         let state = clear_trades(state);
         let state = clear_positions(state);
         let state = clear_open_orders(state);
-        let state = buy_with_orders(state, "EURUSD", 1000.0, 1.1100, 1.0900);
+        let state = buy_with_orders(
+            state,
+            instrument.clone(),
+            Quantity(1000),
+            Price(dec!(1.1100)),
+            Price(dec!(1.0900)),
+        );
 
-        let pos_opt = get_position(&state, "EURUSD");
+        let pos_opt = get_position(&state, &instrument);
         let _ = pos_opt.unwrap();
 
         let orders = filter_open_orders(&state, |_| true);
