@@ -1,4 +1,4 @@
-use cucumber::{World, given};
+use cucumber::{World, given, then, when};
 use cuketut::core::{Instrument, Position, Price, Quantity, State};
 use rust_decimal::prelude::*;
 
@@ -76,11 +76,54 @@ fn the_market_is_at_da(world: &mut TradingWorld, cross: String, bid: String, ask
     });
 }
 
+fn i_submit_an_order_to_buy_at_market(world: &mut TradingWorld, qty: i64, cross: String) {
+    world.map_state(move |state| {
+        cuketut::core::buy(state, Instrument::from(cross), Quantity::new(qty))
+    });
+}
+
+// We can add multiple givens, whens or thens to a function
+#[when(regex = r"^I submit an order to BUY (\d+) (\w{6}) at MKT$")]
+#[when(regex = r"^jeg afgiver en ordre om at KØBE (\d+) (\w{6}) til MARKEDSPRIS$")]
+fn i_submit_an_order_to_buy_at_market_en(world: &mut TradingWorld, qty: i64, cross: String) {
+    i_submit_an_order_to_buy_at_market(world, qty, cross);
+}
+
+fn i_submit_an_order_to_sell_at_market(world: &mut TradingWorld, qty: i64, cross: String) {
+    world.map_state(move |state| {
+        cuketut::core::sell(state, Instrument::from(cross), Quantity::new(qty))
+    });
+}
+
+#[when(regex = r"^I submit an order to SELL (\d+) (\w{6}) at MKT$")]
+fn i_submit_an_order_to_sell_at_market_en(world: &mut TradingWorld, qty: i64, cross: String) {
+    i_submit_an_order_to_sell_at_market(world, qty, cross);
+}
+
+fn a_trade_should_be_made_at(world: &TradingWorld, expected: Price) {
+    let actual = cuketut::core::get_trades(&world.state)
+        .last()
+        .unwrap()
+        .last_px;
+    assert_eq!(expected, actual);
+}
+
+#[then(regex = r"^a trade should be made at ([\d.]+)$")]
+fn a_trade_should_be_made_en(world: &mut TradingWorld, price: String) {
+    a_trade_should_be_made_at(world, parse_price_en(&price));
+}
+
+#[then(regex = r"^skal en handel ske til kurs ([\d,]+)$")]
+fn a_trade_should_be_made_da(world: &mut TradingWorld, price: String) {
+    a_trade_should_be_made_at(world, parse_price_da(&price));
+}
+
 // This runs before everything else, so you can set up things here.
 #[tokio::main]
 async fn main() {
     // You may choose any executor you like (`tokio`, `async-std`, etc.).
     // I use tokio out of habit
+
     TradingWorld::run("features/open_position.feature").await;
     // TODO: run "features/open_position_da.feature",
     // TODO: run "features/conditional_order.feature",
