@@ -20,38 +20,60 @@ impl TradingWorld {
     }
 }
 
+/// Parse an English format price with period as decimal separator
+fn parse_price_en(s: &str) -> Price {
+    Price::new(Decimal::from_str(s).expect("price cannot be parsed as decimal"))
+}
+
+/// Parse a Danish format price with comma as decimal separator
+fn parse_price_da(s: &str) -> Price {
+    let english = s.replace(',', ".");
+    parse_price_en(&english)
+}
+
 // Steps are defined with `given`, `when` and `then` attributes.
 
-fn set_position(world: &mut TradingWorld, cross: String, qty: i64, price: String) {
-    let px = Price(Decimal::from_str(price.as_str()).expect("price cannot be parsed as decimal"));
+// We can share step definitions by using normal functions like this
+fn my_initial_position_is(world: &mut TradingWorld, cross: String, qty: i64, price: Price) {
     world.map_state(move |state| {
-        cuketut::core::set_position(state, Instrument::from(cross), Quantity(qty), px)
+        cuketut::core::set_position(state, Instrument::from(cross), Quantity(qty), price)
     });
 }
 
 // English step definition
 #[given(regex = r"^that my position in (\w{6}) is (\d+) at ([\d.]+)$")]
-async fn my_initial_position_is_en(
-    world: &mut TradingWorld,
-    cross: String,
-    qty: i64,
-    price: String,
-) {
-    set_position(world, cross, qty, price);
+fn my_initial_position_is_en(world: &mut TradingWorld, cross: String, qty: i64, price: String) {
+    my_initial_position_is(world, cross, qty, parse_price_en(&price));
 }
 
 // Danish step definition (handling comma decimal separator)
 #[given(regex = r"^at min position i (\w{6}) er (\d+) købt til kurs ([\d,]+)$")]
-async fn my_initial_position_is_dk(
-    world: &mut TradingWorld,
-    cross: String,
-    qty: i64,
-    price: String,
-) {
-    // map between comma and period as decimal separators
-    let en_price = price.replace(',', ".").to_string();
-    set_position(world, cross, qty, en_price);
-    println!("{:?}", world);
+fn my_initial_position_is_da(world: &mut TradingWorld, cross: String, qty: i64, price: String) {
+    my_initial_position_is(world, cross, qty, parse_price_da(&price));
+}
+
+#[given(regex = r"^the market for (\w{6}) is at \[([\d.]+);([\d.]+)\]$")]
+fn the_market_is_at_en(world: &mut TradingWorld, cross: String, bid: String, ask: String) {
+    world.map_state(move |state| {
+        cuketut::core::set_market(
+            state,
+            Instrument::from(cross),
+            parse_price_en(&bid),
+            parse_price_en(&ask),
+        )
+    });
+}
+
+#[given(regex = r"^markedsprisen for (\w{6}) er \[([\d,]+);([\d,]+)\]$")]
+fn the_market_is_at_da(world: &mut TradingWorld, cross: String, bid: String, ask: String) {
+    world.map_state(move |state| {
+        cuketut::core::set_market(
+            state,
+            Instrument::from(cross),
+            parse_price_da(&bid),
+            parse_price_da(&ask),
+        )
+    });
 }
 
 // This runs before everything else, so you can set up things here.
