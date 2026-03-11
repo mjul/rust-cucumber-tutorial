@@ -316,86 +316,153 @@ mod tests {
     use rust_decimal_macros::dec;
 
     #[test]
-    fn test_market() {
+    fn test_get_market() {
         let state = State::new();
         let instrument = Instrument::new("EURUSD");
         let state = set_market(
             state,
             instrument.clone(),
-            Price(dec!(1.1000)),
-            Price(dec!(1.1005)),
+            Price(dec!(1.34662)),
+            Price(dec!(1.34714)),
         );
         let m = get_market(&state, &instrument);
-        assert_eq!(m.bid, Price(dec!(1.1000)));
-        assert_eq!(m.ask, Price(dec!(1.1005)));
+        assert_eq!(m.bid, Price(dec!(1.34662)));
+        assert_eq!(m.ask, Price(dec!(1.34714)));
     }
 
     #[test]
-    fn test_buy() {
+    fn test_trade_list_manipulation() {
         let state = State::new();
         let instrument = Instrument::new("EURUSD");
-        let state = set_market(
+
+        // is (empty? (get-trades))
+        assert!(get_trades(&state).is_empty());
+
+        // (register-trade! "EURUSD" 1000000 1.34714)
+        let state = register_trade(
             state,
             instrument.clone(),
-            Price(dec!(1.1000)),
-            Price(dec!(1.1005)),
+            Quantity(1000000),
+            Price(dec!(1.34714)),
         );
-        let state = clear_trades(state);
-        let state = clear_positions(state);
-        let state = buy(state, instrument.clone(), Quantity(1000));
-        let pos_opt = get_position(&state, &instrument);
-        let pos = pos_opt.unwrap();
-        assert_eq!(pos.last_qty, Quantity(1000));
-        assert_eq!(pos.last_px, Price(dec!(1.1005)));
 
         let trades = get_trades(&state);
         assert_eq!(trades.len(), 1);
         assert_eq!(trades[0].instrument, instrument);
+        assert_eq!(trades[0].last_qty, Quantity(1000000));
+        assert_eq!(trades[0].last_px, Price(dec!(1.34714)));
     }
 
     #[test]
-    fn test_buy_with_orders() {
+    fn test_buy_at_market() {
         let state = State::new();
         let instrument = Instrument::new("EURUSD");
         let state = set_market(
             state,
             instrument.clone(),
-            Price(dec!(1.1000)),
-            Price(dec!(1.1005)),
+            Price(dec!(1.34662)),
+            Price(dec!(1.34714)),
         );
-        let state = clear_trades(state);
-        let state = clear_positions(state);
-        let state = clear_open_orders(state);
+
+        // (buy! "EURUSD" 1000000)
+        let state = buy(state, instrument.clone(), Quantity(1000000));
+
+        let trades = get_trades(&state);
+        let positions = get_positions(&state);
+        let eurusd_pos = get_position(&state, &instrument).unwrap();
+
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].instrument, instrument);
+        assert_eq!(trades[0].last_qty, Quantity(1000000));
+        assert_eq!(trades[0].last_px, Price(dec!(1.34714)));
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(eurusd_pos.instrument, instrument);
+        assert_eq!(eurusd_pos.last_qty, Quantity(1000000));
+        assert_eq!(eurusd_pos.last_px, Price(dec!(1.34714)));
+    }
+
+    #[test]
+    fn test_buy_with_limit_and_stop_clojure() {
+        let state = State::new();
+        let instrument = Instrument::new("EURUSD");
+        let state = set_market(
+            state,
+            instrument.clone(),
+            Price(dec!(1.34662)),
+            Price(dec!(1.34714)),
+        );
+
+        // (buy! "EURUSD" 1000000 1.4000 1.3000)
         let state = buy_with_orders(
             state,
             instrument.clone(),
-            Quantity(1000),
-            Price(dec!(1.1100)),
-            Price(dec!(1.0900)),
+            Quantity(1000000),
+            Price(dec!(1.4000)),
+            Price(dec!(1.3000)),
         );
 
-        let pos_opt = get_position(&state, &instrument);
-        let _ = pos_opt.unwrap();
+        let trades = get_trades(&state);
+        let positions = get_positions(&state);
+        let eurusd_pos = get_position(&state, &instrument).unwrap();
+        let eurusd_orders = filter_open_orders(&state, |o| o.instrument == instrument);
 
-        let orders = filter_open_orders(&state, |_| true);
-        assert_eq!(orders.len(), 2);
-        assert_eq!(orders[0].oco_with.len(), 2);
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].last_qty, Quantity(1000000));
+        assert_eq!(trades[0].last_px, Price(dec!(1.34714)));
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(eurusd_pos.last_qty, Quantity(1000000));
+
+        assert_eq!(eurusd_orders.len(), 2);
+
+        let limit = eurusd_orders
+            .iter()
+            .find(|o| o.order_type == OrderType::Limit)
+            .expect("Limit order not found");
+        let stop = eurusd_orders
+            .iter()
+            .find(|o| o.order_type == OrderType::Stop)
+            .expect("Stop order not found");
+
+        assert_eq!(limit.side, Side::Sell);
+        assert_eq!(limit.qty, Quantity(1000000));
+        assert_eq!(limit.instrument, instrument);
+        assert_eq!(limit.px, Price(dec!(1.4000)));
+
+        assert_eq!(stop.side, Side::Sell);
+        assert_eq!(stop.qty, Quantity(1000000));
+        assert_eq!(stop.instrument, instrument);
+        assert_eq!(stop.px, Price(dec!(1.3000)));
     }
 
     #[test]
-    fn test_sell() {
+    fn test_sell_at_market() {
         let state = State::new();
         let instrument = Instrument::new("EURUSD");
         let state = set_market(
             state,
             instrument.clone(),
-            Price(dec!(1.1000)),
-            Price(dec!(1.1005)),
+            Price(dec!(1.34662)),
+            Price(dec!(1.34714)),
         );
-        let state = sell(state, instrument.clone(), Quantity(1000));
-        let pos = get_position(&state, &instrument).unwrap();
-        assert_eq!(pos.last_qty, Quantity(-1000));
-        assert_eq!(pos.last_px, Price(dec!(1.1000)));
+
+        // (sell! "EURUSD" 1000000)
+        let state = sell(state, instrument.clone(), Quantity(1000000));
+
+        let trades = get_trades(&state);
+        let positions = get_positions(&state);
+        let eurusd_pos = get_position(&state, &instrument).unwrap();
+
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].instrument, instrument);
+        assert_eq!(trades[0].last_qty, Quantity(-1000000));
+        assert_eq!(trades[0].last_px, Price(dec!(1.34662)));
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(eurusd_pos.instrument, instrument);
+        assert_eq!(eurusd_pos.last_qty, Quantity(-1000000));
+        assert_eq!(eurusd_pos.last_px, Price(dec!(1.34662)));
     }
 
     #[test]
