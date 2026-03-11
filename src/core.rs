@@ -18,6 +18,14 @@ pub struct Price(pub Decimal);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Quantity(pub i64);
 
+impl std::ops::Neg for Quantity {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self(-self.0)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Buy,
@@ -225,9 +233,7 @@ pub fn buy_with_orders(
 pub fn sell(state: State, cross: Instrument, qty: Quantity) -> State {
     let market_data = get_market(&state, &cross);
     let price = market_data.bid;
-    // TODO: implement unary minus on Quantity
-    let Quantity(q) = qty;
-    trade(state, cross, Quantity(-q), price)
+    trade(state, cross, -qty, price)
 }
 
 // ----------------------------------------------------------------
@@ -349,5 +355,28 @@ mod tests {
         let orders = filter_open_orders(&state, |_| true);
         assert_eq!(orders.len(), 2);
         assert_eq!(orders[0].oco_with.len(), 2);
+    }
+
+    #[test]
+    fn test_sell() {
+        let state = State::new();
+        let instrument = Instrument::new("EURUSD");
+        let state = set_market(
+            state,
+            instrument.clone(),
+            Price(dec!(1.1000)),
+            Price(dec!(1.1005)),
+        );
+        let state = sell(state, instrument.clone(), Quantity(1000));
+        let pos = get_position(&state, &instrument).unwrap();
+        assert_eq!(pos.last_qty, Quantity(-1000));
+        assert_eq!(pos.last_px, Price(dec!(1.1000)));
+    }
+
+    #[test]
+    fn test_quantity_neg() {
+        let q = Quantity(100);
+        assert_eq!(-q, Quantity(-100));
+        assert_eq!(-(-q), Quantity(100));
     }
 }
