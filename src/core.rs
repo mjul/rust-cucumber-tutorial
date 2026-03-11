@@ -7,8 +7,19 @@ pub struct Instrument(pub String);
 
 impl Instrument {
     #[allow(dead_code)]
-    pub fn new(s: &str) -> Self {
+    pub fn new(s: String) -> Self {
         Self(s.to_string())
+    }
+}
+
+impl From<String> for Instrument {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+impl From<&str> for Instrument {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
     }
 }
 
@@ -318,7 +329,7 @@ mod tests {
     #[test]
     fn test_get_market() {
         let state = State::new();
-        let instrument = Instrument::new("EURUSD");
+        let instrument = Instrument::from("EURUSD");
         let state = set_market(
             state,
             instrument.clone(),
@@ -333,7 +344,7 @@ mod tests {
     #[test]
     fn test_trade_list_manipulation() {
         let state = State::new();
-        let instrument = Instrument::new("EURUSD");
+        let instrument = Instrument::from("EURUSD");
 
         // is (empty? (get-trades))
         assert!(get_trades(&state).is_empty());
@@ -356,7 +367,7 @@ mod tests {
     #[test]
     fn test_buy_at_market() {
         let state = State::new();
-        let instrument = Instrument::new("EURUSD");
+        let instrument = Instrument::from("EURUSD");
         let state = set_market(
             state,
             instrument.clone(),
@@ -385,7 +396,7 @@ mod tests {
     #[test]
     fn test_buy_with_limit_and_stop_clojure() {
         let state = State::new();
-        let instrument = Instrument::new("EURUSD");
+        let instrument = Instrument::from("EURUSD");
         let state = set_market(
             state,
             instrument.clone(),
@@ -439,7 +450,7 @@ mod tests {
     #[test]
     fn test_sell_at_market() {
         let state = State::new();
-        let instrument = Instrument::new("EURUSD");
+        let instrument = Instrument::from("EURUSD");
         let state = set_market(
             state,
             instrument.clone(),
