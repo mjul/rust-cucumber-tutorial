@@ -15,8 +15,20 @@ impl Instrument {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Price(pub Decimal);
 
+impl Price {
+    pub fn new(d: Decimal) -> Self {
+        Self(d)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Quantity(pub i64);
+
+impl Quantity {
+    pub fn new(q: i64) -> Self {
+        Self(q)
+    }
+}
 
 impl std::ops::Neg for Quantity {
     type Output = Self;
@@ -44,11 +56,27 @@ pub struct MarketData {
     pub ask: Price,
 }
 
+impl MarketData {
+    pub fn new(bid: Price, ask: Price) -> Self {
+        Self { bid, ask }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Position {
     pub instrument: Instrument,
     pub last_qty: Quantity, // Positions can be negative for short
     pub last_px: Price,
+}
+
+impl Position {
+    pub fn new(instrument: Instrument, qty: Quantity, price: Price) -> Self {
+        Self {
+            instrument,
+            last_qty: qty,
+            last_px: price,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -62,11 +90,53 @@ pub struct Order {
     pub oco_with: Vec<Uuid>,
 }
 
+impl Order {
+    pub fn new(
+        side: Side,
+        qty: Quantity,
+        instrument: Instrument,
+        order_type: OrderType,
+        price: Price,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            side,
+            qty,
+            instrument,
+            order_type,
+            px: price,
+            oco_with: Vec::new(),
+        }
+    }
+
+    /// *one cancels the other* makes the orders mutually exclusive so that executing one cancels the other.
+    pub fn make_oco(orders: Vec<Order>) -> Vec<Order> {
+        let ids: Vec<Uuid> = orders.iter().map(|o| o.id).collect();
+        orders
+            .into_iter()
+            .map(|mut o| {
+                o.oco_with = ids.clone();
+                o
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Trade {
     pub instrument: Instrument,
     pub last_qty: Quantity,
     pub last_px: Price,
+}
+
+impl Trade {
+    pub fn new(instrument: Instrument, qty: Quantity, price: Price) -> Self {
+        Self {
+            instrument,
+            last_qty: qty,
+            last_px: price,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -99,7 +169,7 @@ pub fn get_market(state: &State, cross: &Instrument) -> MarketData {
 
 #[allow(dead_code)]
 pub fn set_market(mut state: State, cross: Instrument, bid: Price, ask: Price) -> State {
-    state.market.insert(cross, MarketData { bid, ask });
+    state.market.insert(cross, MarketData::new(bid, ask));
     state
 }
 
@@ -132,7 +202,7 @@ pub fn set_position(
 ) -> State {
     state
         .positions
-        .insert(instrument.clone(), make_position(instrument, qty, price));
+        .insert(instrument.clone(), Position::new(instrument, qty, price));
     state
 }
 
@@ -171,7 +241,7 @@ pub fn submit_orders(mut state: State, orders: Vec<Order>) -> State {
 }
 
 pub fn submit_oco_orders(state: State, a: Order, b: Order) -> State {
-    submit_orders(state, make_oco(vec![a, b]))
+    submit_orders(state, Order::make_oco(vec![a, b]))
 }
 
 // ----------------------------------------------------------------
@@ -193,15 +263,15 @@ pub fn register_trade(
     qty: Quantity,
     price: Price,
 ) -> State {
-    state.trades.push(make_trade(instrument, qty, price));
+    state.trades.push(Trade::new(instrument, qty, price));
     state
 }
 
 fn trade(mut state: State, cross: Instrument, qty: Quantity, price: Price) -> State {
-    state.trades.push(make_trade(cross.clone(), qty, price));
+    state.trades.push(Trade::new(cross.clone(), qty, price));
     state
         .positions
-        .insert(cross.clone(), make_position(cross, qty, price));
+        .insert(cross.clone(), Position::new(cross, qty, price));
     state
 }
 
@@ -218,15 +288,15 @@ pub fn buy_with_orders(
     target: Price,
     stop: Price,
 ) -> State {
-    let take_profit = create_order(Side::Sell, qty, cross.clone(), OrderType::Limit, target);
-    let stop_loss = create_order(Side::Sell, qty, cross.clone(), OrderType::Stop, stop);
+    let take_profit = Order::new(Side::Sell, qty, cross.clone(), OrderType::Limit, target);
+    let stop_loss = Order::new(Side::Sell, qty, cross.clone(), OrderType::Stop, stop);
 
     let market_data = get_market(&state, &cross);
     let price = market_data.ask;
 
     let state = trade(state, cross, qty, price);
 
-    let oco_orders = make_oco(vec![take_profit, stop_loss]);
+    let oco_orders = Order::make_oco(vec![take_profit, stop_loss]);
     submit_orders(state, oco_orders)
 }
 
@@ -237,53 +307,8 @@ pub fn sell(state: State, cross: Instrument, qty: Quantity) -> State {
 }
 
 // ----------------------------------------------------------------
-// Helper functions
+// Tests
 // ----------------------------------------------------------------
-
-pub fn make_position(instrument: Instrument, qty: Quantity, price: Price) -> Position {
-    Position {
-        instrument,
-        last_qty: qty,
-        last_px: price,
-    }
-}
-
-pub fn create_order(
-    side: Side,
-    qty: Quantity,
-    instrument: Instrument,
-    order_type: OrderType,
-    price: Price,
-) -> Order {
-    Order {
-        id: Uuid::new_v4(),
-        side,
-        qty,
-        instrument,
-        order_type,
-        px: price,
-        oco_with: Vec::new(),
-    }
-}
-
-pub fn make_oco(orders: Vec<Order>) -> Vec<Order> {
-    let ids: Vec<Uuid> = orders.iter().map(|o| o.id).collect();
-    orders
-        .into_iter()
-        .map(|mut o| {
-            o.oco_with = ids.clone();
-            o
-        })
-        .collect()
-}
-
-pub fn make_trade(instrument: Instrument, qty: Quantity, price: Price) -> Trade {
-    Trade {
-        instrument,
-        last_qty: qty,
-        last_px: price,
-    }
-}
 
 #[cfg(test)]
 mod tests {
