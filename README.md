@@ -10,13 +10,18 @@ see the [code](https://github.com/cucumber-rs/cucumber) and [documentation](http
 ## Quick Start
 
 Build:
-```
+```shell
     cargo build
 ```
 
 Run tests:
-```
+```shell
    cargo test
+```
+
+Run Cucumber specifications:
+```shell
+cargo test --test cucumber_specs
 ```
 
 ## Usage
@@ -40,11 +45,11 @@ application, you could write a feature like this:
         Then a trade should be made at 1.34714
         And my position should show LONG 1000000 EURUSD at 1.34714
 
-That is you specification.  Now add step definitions to the
-`features/step_definitions` folder to connect the specification
+That is you specification. Now add step definitions to the
+`tests/cucumber_specs.rs` file to connect the specification
 mini-language thus invented to code by matching a regex to the "given"
 text and returning a function of the values matched by the regex,
-e.g.
+_e.g._
 
     (Given #"^that my position in (\w{6}) is (\d+) at ([\d.]+)$"
            (fn [cross qty price]
