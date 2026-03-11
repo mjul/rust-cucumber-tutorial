@@ -7,6 +7,18 @@ Cucumber is a language for writing executable specifications for software.
 The `cucumber` crate provides a Rust library for running Cucumber specifications, 
 see the [code](https://github.com/cucumber-rs/cucumber) and [documentation](https://cucumber-rs.github.io/cucumber/current/).
 
+## Quick Start
+
+Build:
+```
+    cargo build
+```
+
+Run tests:
+```
+   cargo test
+```
+
 ## Usage
 
 The project includes an example specification in the `features`
