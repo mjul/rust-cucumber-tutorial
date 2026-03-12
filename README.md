@@ -1,25 +1,29 @@
 # Cucumber Tutorial for Rust
 
 This project shows you how to set up and use Cucumber for Rust.
-It is based on my [Cucumber Tutorial for Clojure](https://github.com/mjul/cucumber-tutorial) 
+It is based on my [Cucumber Tutorial for Clojure](https://github.com/mjul/cucumber-tutorial)
 
 Cucumber is a language for writing executable specifications for software.
-The `cucumber` crate provides a Rust library for running Cucumber specifications, 
-see the [code](https://github.com/cucumber-rs/cucumber) and [documentation](https://cucumber-rs.github.io/cucumber/current/).
+The `cucumber` crate provides a Rust library for running Cucumber specifications,
+see the [code](https://github.com/cucumber-rs/cucumber)
+and [documentation](https://cucumber-rs.github.io/cucumber/current/).
 
 ## Quick Start
 
 Build:
+
 ```shell
     cargo build
 ```
 
 Run tests:
+
 ```shell
    cargo test
 ```
 
 Run Cucumber specifications:
+
 ```shell
 cargo test --test cucumber_specs
 ```
@@ -47,19 +51,23 @@ application, you could write a feature like this:
 
 That is you specification. Now add step definitions to the
 `tests/cucumber_specs.rs` file to connect the specification
-mini-language thus invented to code by matching a regex to the "given"
-text and returning a function of the values matched by the regex,
+mini-language defined by the above to code. We do this by matching
+a regex to the "given" text with a function of the values matched by the regex,
 _e.g._
 
-    (Given #"^that my position in (\w{6}) is (\d+) at ([\d.]+)$"
-           (fn [cross qty price]
-             (dosync 
-               (set-position! cross qty price))))
+```rust
+#[given(regex = r"^that my position in (\w{6}) is (\d+) at ([\d.]+)$")]
+fn my_initial_position_is_en(world: &mut TradingWorld, cross: String, qty: i64, price: String) {
+    // set up the state accordingly...
+    my_initial_position_is(world, cross, qty, parse_price_en(&price));
+}
+```
 
 ### Specifications in your own Language
+
 You can define Cucumber features in many languages. Here is the Danish
-version of the example above, from the file
-`features/open_position_da.feature`:
+version of the example above, from the file `features/open_position_da.feature`.
+Note the `#language: da` declaration on the first line:
 
     #language: da
     Egenskab: Åbn position
@@ -75,6 +83,7 @@ version of the example above, from the file
         Og min position skal være LANG 1000000 EURUSD købt til kurs 1,34714
 
 ### Test the same Scenario with Multiple Examples
+
 You can create a template, called a Scenario Outline, and have
 Cucumber evaluate it with different sets of values substituted into
 the template fields. The sets of values are called Examples.
@@ -96,12 +105,9 @@ use the following Scenario Outline from the file
           |  1.40000 | 1.40050 | 1000000  |
 
 ### Use Tables of Values in Specifications
-*NOTE: This feature is not working with the current version of the
-Clojure Cucumber bindings.*
 
-You can pass tabular data to your step definitions in the form of an
-object implementing the cuke4duke.Table interface. This is useful for
-setting up context or verifying multiple correlated assertions.
+You can pass tabular data to your step definitions using a `cucumber::gherkin::Step`
+parameter. This is useful for setting up context or verifying multiple correlated assertions.
 
 For example, if we want to put conditional exits on a currency
 position we can create two orders to take profit if the market rises
@@ -129,120 +135,140 @@ See the file `features/conditional_order.feature` for an example:
           | SELL | 1000000  | EURUSD | LIMIT | 1.3800 | 
           | SELL | 1000000  | EURUSD | STOP  | 1.3200 |
 
-The following helper function is useful for extracting the values from
-the table into a sequence of maps. See the
-`features/step_definitions/open_position_steps.clj` file for an
-example of how to use it to write the step definitions:
+See the `tests/cucumber_specs.rs` file for an
+example of how to use it to write the step definitions.
 
-    (defn hashes [table]
-      "Get the data from a Cucumber Table as a list of maps.
-       The result is a sequence of maps for each non-header row of the
-       table. Each map contains the values of each column in the row keyed
-       by the corresponding column names taken from the header row."
-      (map #(into {} %) (.hashes table)))
+We use a helper function is useful for extracting the values from
+the table into a sequence of maps:
+
+```rust
+/// Translate a table to a vector of `HashMap`, one for each row, where the keys are the
+/// column names from the header row and the values are the values in the data row.
+fn table_to_hash_maps(table: &Table) -> Vec<HashMap<String, String>> {
+    match table.rows.as_slice() {
+        [] => vec![],
+        [_headers] => vec![],
+        [headers, data @ ..] => {
+            // The table is a list of rows, every row is a list of fields (strings)
+            // Translate it to a list of keyed maps (one per row, excluding the header),
+            // using the headline value as the key for each field
+            data.iter()
+                .map(|row| {
+                    headers
+                        .iter()
+                        .cloned()
+                        .zip(row.iter().cloned())
+                        .collect::<HashMap<String, String>>()
+                })
+                .collect()
+        }
+    }
+}
+```
 
 ## Installation
 
-To get the dependencies to run the code in this tutorial do this:
+Now, `cargo test --test cucumber_specs` will run the Cucumber tests.
 
-    lein deps
-    lein cuke-gems
-
-Now, `lein cuke` will run the Cucumber tests.
-
-    lein cuke
+    cargo test --test cucumber_specs
 
 You should now see something like this:
 
-    Feature: Open Position
-      In order to open a position
-      As a trader
-      I want to send a trade order
-    
-      Scenario: Market Order                                       # features/open_position.feature:6
-        Given that my position in EURUSD is 0 at 1.34700           # ^that my position in (\w{6}) is (\d+) at ([\d.]+)$
-        And the market for EURUSD is at [1.34662;1.34714]          # ^the market for (\w{6}) is at \[([\d.]+);([\d.]+)\]$
-        When I submit an order to BUY 1000000 EURUSD at MKT        # ^I submit an order to BUY (\d+) (\w{6}) at MKT$
-        Then a trade should be made at 1.34714                     # ^a trade should be made at ([\d.]+)$
-        And my position should show LONG 1000000 EURUSD at 1.34714 # ^my position should show LONG (\d+) (\w{6}) at ([\d.]+)$
-    
-    #language: da
-    Egenskab: Åbn position
-      For at åbne en position
-      Som en valutahandler
-      Ønsker jeg at afgive en handelsordre
-    
-      Scenarie: Markedsordre                                                   # features/open_position_da.feature:7
-        Givet at min position i EURUSD er 0 købt til kurs 1,34700              # ^at min position i (\w{6}) er (\d+) købt til kurs ([\d,]+)$
-        Og markedsprisen for EURUSD er [1,34662;1,34714]                       # ^markedsprisen for (\w{6}) er \[([\d,]+);([\d,]+)\]$
-        Når jeg afgiver en ordre om at KØBE 1000000 EURUSD til MARKEDSPRIS     # ^jeg afgiver en ordre om at KØBE (\d+) (\w{6}) til MARKEDSP RIS$
-        Så skal en handel ske til kurs 1,34714                                 # ^skal en handel ske til kurs ([\d,]+)$
-        Og min position skal være LANG 1000000 EURUSD købt til kurs 1,34714 # ^min position skal være LANG (\d+) (\w{6}) købt til kurs  ([\d,]+)$
-    
-    2 scenarios (2 passed)
-    10 steps (10 passed)
+```
+```Feature: Open Position
+Scenario: Market Order BUY
+✔  Given that my position in EURUSD is 0 at 1.34700
+✔  And the market for EURUSD is at [1.34662;1.34714]
+✔  When I submit an order to BUY 1000000 EURUSD at MKT
+✔  Then a trade should be made at 1.34714
+✔  And my position should show LONG 1000000 EURUSD at 1.34714
+Scenario Outline: Market Order SELL
+✔  Given that my position in EURUSD is 0 at 1.34700
+✔  And the market for EURUSD is at [1.34662;1.34714]
+✔  When I submit an order to SELL 1000000 EURUSD at MKT
+✔  Then a trade should be made at 1.34662
+✔  And my position should show SHORT 1000000 EURUSD at 1.34662
+Scenario Outline: Market Order SELL
+✔  Given that my position in EURUSD is 0 at 1.34700
+✔  And the market for EURUSD is at [1.40000;1.40050]
+✔  When I submit an order to SELL 1000000 EURUSD at MKT
+✔  Then a trade should be made at 1.40000
+✔  And my position should show SHORT 1000000 EURUSD at 1.40000
+[Summary]
+1 feature
+3 scenarios (3 passed)
+15 steps (15 passed)
+Egenskab: Åbn position
+Scenarie: Markedsordre
+✔  Givet at min position i EURUSD er 0 købt til kurs 1,34700
+✔  Og markedsprisen for EURUSD er [1,34662;1,34714]
+✔  Når jeg afgiver en ordre om at KØBE 1000000 EURUSD til MARKEDSPRIS
+✔  Så skal en handel ske til kurs 1,34714
+✔  Og min position skal være LANG 1000000 EURUSD købt til kurs 1,34714
+[Summary]
+1 feature
+1 scenario (1 passed)
+5 steps (5 passed)
+Feature: Conditional Order
+Scenario: Market Order with Take Profit and Stop Loss guards
+✔  Given that my position in EURUSD is 0 at 1.34700
+✔  And the market for EURUSD is at [1.34662;1.34714]
+✔  And I have no open orders in EURUSD
+✔  When I submit an order to BUY 1000000 EURUSD at MKT with TARGET 1.3800 and STOP 1.3200
+✔  Then a trade should be made at 1.34714
+✔  And my position should show LONG 1000000 EURUSD at 1.34714
+✔  And my open orders should contain these OCO-orders
+| Side | Quantity | Cross  | Type  | Price  |
+| SELL | 1000000  | EURUSD | LIMIT | 1.3800 |
+| SELL | 1000000  | EURUSD | STOP  | 1.3200 |
+[Summary]
+1 feature
+1 scenario (1 passed)
+7 steps (7 passed)
+```
 
-### Setting Up a Project for Cucumber BDD
+### Setting Up a Project for Cucumber
 
-First, edit the leiningen project.clj file to include the Cucumber
-library and the lein-cuke extension to leiningen. You should have
-something like this:
+See the Rust Cucumber book for documentation: https://cucumber-rs.github.io/cucumber/current/introduction.html
+First, edit the `Cargo.toml` file to include the Cucumber library and point to the top-level test file. The salient
+parts are these:
 
+```toml
+[dev-dependencies]
+cucumber = { version = "0.22.1" }
+tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread"] }
 
-    (defproject cuketut "1.2.0-SNAPSHOT"
-      :description "Setting up and using Cucumber with Clojure."
-      :dependencies [[org.clojure/clojure "1.2.0"]
-                     [org.clojure/clojure-contrib "1.2.0"]]
-      :dev-dependencies [[org.clojars.mjul/lein-cuke "1.2.0"]])
+[[test]]
+name = "cucumber_specs" # this should be the same as the filename of your test target
+harness = false  # allows Cucumber to print output instead of libtest
+```
 
-
-Now install cuke:
-
-    lein deps
-    lein cuke-gems
-
-Create a feature folder and a folder for step definitions inside it in
+Here we use a `featurse` folder for the specifications in
 the project root:
 
-    make -p features/step_definitions/
+```shell
+make -p features/
+```    
 
 As you write your code, put the feature definitions in the `features`
 folder and the step definitions that link them to your code in the
-`step_definitions` subfolder.
+`tests/cucumber_specs.rs` file.
 
-To run the Cucumber tests from lein:
+On bigger projects, break out a `step_definitions` module to keep the step definitions
+well organised.
 
-    lein cuke 
+## Further Research
 
-To get extra information from Cucumber use the verbose flag:
+For file system layout I followed the Clojure layout, it would be useful
+to explore this further and find an idiomatic Rust layout that fits with the
+configuration in `Cargo.toml` and the CLI options, _e.g._ you can use an input glob to
+select which features to run, `-i`, but then we probably have to
+write the `main` function in a way where it does not pull in everything
 
-    lein cuke --verbose
-
-If you want to run only a specific feature or set of features you can
-pass file names or directories to `lein cuke`:
-
-    lein cuke features/open_position_da.feature
-
+```shell
+cargo test --test cucumber_specs -- -i 'features/open_position_da.feature' 
+```
 
 ## License
 
-Copyright (C) 2010-2011 Martin Jul (www.mjul.com)
-
 Distributed under the MIT License. See the LICENSE file for details.
-
-
-## About the Author
-
-Martin Jul is a software architect and partner in Ative, a
-Copenhagen-based consultancy specialised in doing and teaching lean
-software development.
-
-His work is currently focused on building distributed,
-high-performance low-latency financial trading applications.
-
-He is also the organiser of the Copenhagen Clojure meet-ups:
-
-* Twitter: [@mjul](http://twitter.com/mjul)
-* Work: [Ative](http://www.ative.dk)
-* Blog: [Ative at Work](http://community.ative.dk/blogs/)
-* Copenhagen Clojure Meet-Up [dates here](http://www.ative.dk/om-ative/arrangementer.aspx)
