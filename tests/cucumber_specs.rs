@@ -118,6 +118,62 @@ fn a_trade_should_be_made_da(world: &mut TradingWorld, price: String) {
     a_trade_should_be_made_at(world, parse_price_da(&price));
 }
 
+fn my_position_should_show_long(world: &TradingWorld, qty: i64, cross: String, price: Price) {
+    let inst = Instrument::from(cross.clone());
+    let actual = cuketut::core::get_position(&world.state, &inst)
+        .expect("expected to find position for instrument");
+    let expected = Position::new(inst.clone(), Quantity::new(qty), price);
+    assert_eq!(expected, actual);
+}
+
+#[then(regex = r"^my position should show LONG (\d+) (\w{6}) at ([\d.]+)$")]
+fn my_position_should_show_long_en(
+    world: &mut TradingWorld,
+    qty: i64,
+    cross: String,
+    price: String,
+) {
+    my_position_should_show_long(world, qty, cross, parse_price_en(&price));
+}
+
+#[then(regex = r"^min position skal være LANG (\d+) (\w{6}) købt til kurs ([\d,]+)$")]
+fn my_position_should_show_long_da(
+    world: &mut TradingWorld,
+    qty: i64,
+    cross: String,
+    price: String,
+) {
+    my_position_should_show_long(world, qty, cross, parse_price_da(&price));
+}
+
+fn my_position_should_show_short(world: &TradingWorld, qty: i64, cross: String, price: Price) {
+    let inst = Instrument::from(cross.clone());
+    let actual = cuketut::core::get_position(&world.state, &inst)
+        .expect("expected to find position for instrument");
+    let expected = Position::new(inst.clone(), -Quantity::new(qty), price);
+    assert_eq!(expected, actual);
+}
+
+#[then(regex = r"^my position should show SHORT (\d+) (\w{6}) at ([\d.]+)$")]
+fn my_position_should_show_short_en(
+    world: &mut TradingWorld,
+    qty: i64,
+    cross: String,
+    price: String,
+) {
+    my_position_should_show_short(world, qty, cross, parse_price_en(&price));
+}
+
+#[then(regex = r"^min position skal være KORT (\d+) (\w{6}) solgt til kurs ([\d,]+)$")]
+fn my_position_should_show_short_da(
+    world: &mut TradingWorld,
+    qty: i64,
+    cross: String,
+    price: String,
+) {
+    my_position_should_show_short(world, qty, cross, parse_price_da(&price));
+}
+
 // This runs before everything else, so you can set up things here.
 #[tokio::main]
 async fn main() {
@@ -125,6 +181,6 @@ async fn main() {
     // I use tokio out of habit
 
     TradingWorld::run("features/open_position.feature").await;
-    // TODO: run "features/open_position_da.feature",
+    TradingWorld::run("features/open_position_da.feature").await;
     // TODO: run "features/conditional_order.feature",
 }

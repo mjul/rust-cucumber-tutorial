@@ -73,7 +73,7 @@ impl MarketData {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Position {
     pub instrument: Instrument,
     pub last_qty: Quantity, // Positions can be negative for short
