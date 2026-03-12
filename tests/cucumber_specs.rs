@@ -290,8 +290,7 @@ fn my_open_orders_should_contain_these_oco_orders(world: &mut TradingWorld, step
 async fn main() {
     // You may choose any executor you like (`tokio`, `async-std`, etc.).
     // I use tokio out of habit
-
-    TradingWorld::run("features/open_position.feature").await;
-    TradingWorld::run("features/open_position_da.feature").await;
-    TradingWorld::run("features/conditional_order.feature").await;
+    TradingWorld::cucumber()
+        .run_and_exit("features/")  // default: run all features
+        .await;
 }

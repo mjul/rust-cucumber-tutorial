@@ -22,10 +22,22 @@ Run tests:
    cargo test
 ```
 
-Run Cucumber specifications:
+Run Cucumber specifications only:
 
 ```shell
 cargo test --test cucumber_specs
+```
+
+Run specific specifications using an input glob:
+
+```shell
+cargo test --test cucumber_specs -- --input 'features/*_da.feature'
+```
+
+Show Cucumber CLI options:
+
+```shell
+cargo test --test cucumber_specs -- --help
 ```
 
 ## Usage
@@ -49,7 +61,7 @@ application, you could write a feature like this:
         Then a trade should be made at 1.34714
         And my position should show LONG 1000000 EURUSD at 1.34714
 
-That is you specification. Now add step definitions to the
+That is your specification. Now add step definitions to the
 `tests/cucumber_specs.rs` file to connect the specification
 mini-language defined by the above to code. We do this by matching
 a regex to the "given" text with a function of the values matched by the regex,
@@ -175,7 +187,7 @@ Now, `cargo test --test cucumber_specs` will run the Cucumber tests.
 You should now see something like this:
 
 ```
-```Feature: Open Position
+Feature: Open Position
 Scenario: Market Order BUY
 ✔  Given that my position in EURUSD is 0 at 1.34700
 ✔  And the market for EURUSD is at [1.34662;1.34714]
@@ -243,8 +255,7 @@ name = "cucumber_specs" # this should be the same as the filename of your test t
 harness = false  # allows Cucumber to print output instead of libtest
 ```
 
-Here we use a `featurse` folder for the specifications in
-the project root:
+Here we use a `features` folder for the specifications in the project root:
 
 ```shell
 make -p features/
@@ -254,20 +265,21 @@ As you write your code, put the feature definitions in the `features`
 folder and the step definitions that link them to your code in the
 `tests/cucumber_specs.rs` file.
 
-On bigger projects, break out a `step_definitions` module to keep the step definitions
-well organised.
+This is main function (using Tokio for async), this respects the
+CLI options (see `cargo test --test cucumber_specs -- --help` for more information):
 
-## Further Research
-
-For file system layout I followed the Clojure layout, it would be useful
-to explore this further and find an idiomatic Rust layout that fits with the
-configuration in `Cargo.toml` and the CLI options, _e.g._ you can use an input glob to
-select which features to run, `-i`, but then we probably have to
-write the `main` function in a way where it does not pull in everything
-
-```shell
-cargo test --test cucumber_specs -- -i 'features/open_position_da.feature' 
+```rust
+#[tokio::main]
+async fn main() {
+    // TradingWorld is our `World` object in this project
+    TradingWorld::cucumber()
+        .run_and_exit("features/")  // default: run all features
+        .await;
+}
 ```
+
+On bigger projects, break out a `step_definitions` module to keep the step definitions
+well organised according to the domain.
 
 ## License
 
