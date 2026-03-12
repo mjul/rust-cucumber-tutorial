@@ -208,12 +208,8 @@ fn i_submit_an_order_to_buy_at_market_with_target_and_stop(
 /// column names from the header row and the values are the values in the data row.
 fn table_to_hash_maps(table: &Table) -> Vec<HashMap<String, String>> {
     match table.rows.as_slice() {
-        [] => {
-            vec![]
-        }
-        [_headers] => {
-            vec![]
-        }
+        [] => vec![],
+        [_headers] => vec![],
         [headers, data @ ..] => {
             // The table is a list of rows, every row is a list of fields (strings)
             // Translate it to a list of keyed maps (one per row, excluding the header),
