@@ -174,6 +174,34 @@ fn my_position_should_show_short_da(
     my_position_should_show_short(world, qty, cross, parse_price_da(&price));
 }
 
+// We don't have to use a separate function, we can put the #[given] on the implementation
+#[given(regex = r"^I have no open orders in (\w{6})$")]
+fn i_have_no_open_orders_in(world: &mut TradingWorld, cross: String) {
+    let inst = Instrument::from(cross);
+    world.map_state(|s| cuketut::core::remove_open_orders(s, |o| o.instrument == inst));
+}
+
+#[when(
+    regex = r"^I submit an order to BUY (\d+) (\w{6}) at MKT with TARGET ([\d.]+) and STOP ([\d.]+)$"
+)]
+fn i_submit_an_order_to_buy_at_market_with_target_and_stop(
+    world: &mut TradingWorld,
+    qty: i64,
+    cross: String,
+    target: String,
+    stop: String,
+) {
+    world.map_state(move |state| {
+        cuketut::core::buy_with_orders(
+            state,
+            Instrument::from(cross),
+            Quantity::new(qty),
+            parse_price_en(&target),
+            parse_price_en(&stop),
+        )
+    });
+}
+
 // This runs before everything else, so you can set up things here.
 #[tokio::main]
 async fn main() {
@@ -182,5 +210,5 @@ async fn main() {
 
     TradingWorld::run("features/open_position.feature").await;
     TradingWorld::run("features/open_position_da.feature").await;
-    // TODO: run "features/conditional_order.feature",
+    TradingWorld::run("features/conditional_order.feature").await;
 }
