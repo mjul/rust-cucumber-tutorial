@@ -1,6 +1,8 @@
+use cucumber::gherkin::{Step, Table};
 use cucumber::{World, given, then, when};
-use cuketut::core::{Instrument, Position, Price, Quantity, State};
+use cuketut::core::{Instrument, OrderType, Position, Price, Quantity, Side, State};
 use rust_decimal::prelude::*;
+use std::collections::HashMap;
 
 // The `World` is your shared, likely mutable state.
 // Cucumber constructs it via `Default::default()` for each scenario.
@@ -200,6 +202,91 @@ fn i_submit_an_order_to_buy_at_market_with_target_and_stop(
             parse_price_en(&stop),
         )
     });
+}
+
+/// Translate a table to a vector of `HashMap`, one for each row, where the keys are the
+/// column names from the header row and the values are the values in the data row.
+fn table_to_hash_maps(table: &Table) -> Vec<HashMap<String, String>> {
+    match table.rows.as_slice() {
+        [] => {
+            vec![]
+        }
+        [_headers] => {
+            vec![]
+        }
+        [headers, data @ ..] => {
+            // The table is a list of rows, every row is a list of fields (strings)
+            // Translate it to a list of keyed maps (one per row, excluding the header),
+            // using the headline value as the key for each field
+            data.iter()
+                .map(|row| {
+                    headers
+                        .iter()
+                        .cloned()
+                        .zip(row.iter().cloned())
+                        .collect::<HashMap<String, String>>()
+                })
+                .collect()
+        }
+    }
+}
+
+// Using a data table, see https://cucumber-rs.github.io/cucumber/current/writing/data_tables.html
+#[then(regex = r"^my open orders should contain these OCO-orders$")]
+fn my_open_orders_should_contain_these_oco_orders(world: &mut TradingWorld, step: &Step) {
+    if let Some(table) = step.table.as_ref() {
+        let data = table_to_hash_maps(table);
+        for datum in data {
+            let side_str = datum
+                .get("Side")
+                .expect("Side column is missing in the table");
+            let side = match side_str.as_str() {
+                "BUY" => Some(Side::Buy),
+                "SELL" => Some(Side::Sell),
+                _ => None,
+            }
+            .expect("Side must be BUY or SELL");
+            let qty_str = datum
+                .get("Quantity")
+                .expect("Quantity column is missing in the table");
+            let qty = Quantity::new(qty_str.parse::<i64>().expect("Quantity must be i64"));
+            let cross_str = datum
+                .get("Cross")
+                .expect("Cross column is missing in the table");
+            let inst = Instrument::from(cross_str.to_string());
+            let ot_string = datum
+                .get("Type")
+                .expect("Type column is missing in the table");
+            let ot = match ot_string.as_str() {
+                "LIMIT" => Some(OrderType::Limit),
+                "STOP" => Some(OrderType::Stop),
+                _ => None,
+            }
+            .expect("Type must be LIMIT or STOP");
+            let px_string = datum
+                .get("Price")
+                .expect("Price column is missing in the table");
+            let px = parse_price_en(&px_string);
+
+            let matching_orders = cuketut::core::filter_open_orders(&world.state, |o| {
+                o.side == side
+                    && o.qty == qty
+                    && o.instrument == inst
+                    && o.order_type == ot
+                    && o.px == px
+            });
+
+            // Show the expected values, the matches and the total list of open orders on error to aid troubleshooting
+            assert_eq!(
+                1,
+                matching_orders.len(),
+                "Expected one matching order for {:?}, found {:?} in {:?}",
+                datum,
+                matching_orders,
+                cuketut::core::filter_open_orders(&world.state, |_| true)
+            );
+        }
+    }
 }
 
 // This runs before everything else, so you can set up things here.
